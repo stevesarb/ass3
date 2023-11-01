@@ -1,0 +1,21 @@
+int main() {
+	while() {
+		prompt()
+		// handle blank and comments
+		// expand dollars $$
+		if (exit)
+		if (status)
+		if (cd)
+		else {
+			fork()
+			if (parent)
+				// wait or not
+				// return to top
+			else (child)
+				dup2()
+				exec(whatever)
+		}
+	}
+}
+
+
