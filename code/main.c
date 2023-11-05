@@ -9,12 +9,8 @@ int main() {
 	while (1) {
 		// prompt and get input
 		printf(": ");
+		fflush(stdout);
 		lineSize = getline(&line, &len, stdin);
-
-		// if (DEBUGMODE) {
-		// 	printf("len = %d ; linesize = %d\n", len, lineSize);
-		// 	printf("input: [%s]\n", line);
-		// }
 
 		// blank line and comments
 		if ((lineSize == 1) || (line[0] == '#')) {
@@ -24,7 +20,9 @@ int main() {
 		}	
 
 		// expand dollars $$
-		line = search_for_dollars(line, lineSize);
+		line = expand_dollars(line, lineSize);
+		// printf("line: %s\n", line);
+		// fflush(stdout);
 
 		// exit
 		if ((strncmp(line, "exit", 4) == 0) && (lineSize == 5)) {
@@ -53,6 +51,7 @@ int main() {
 			if (cmndValid == 1) {
 				// get status
 				printf("IN STATUS\n");
+				fflush(stdout);
 			}
 		}
 

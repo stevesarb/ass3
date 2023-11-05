@@ -6,10 +6,12 @@
 #include <string.h>
 #include <fcntl.h>
 #include <time.h>
+#include <unistd.h>
+#include <sys/types.h>
 
 
 void cd(char*, int);
-char* search_for_dollars(char*, int);
+char* expand_dollars(char*, int);
 
 
 #endif
