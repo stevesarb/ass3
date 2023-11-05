@@ -24,10 +24,7 @@ int main() {
 		}	
 
 		// expand dollars $$
-			// iterate through line, serach for instances of $$
-			// expand those instances, continue searching
-		char* expandedStr = search_for_dollars(line, lineSize);
-		// line = expandedStr;
+		line = search_for_dollars(line, lineSize);
 
 		// exit
 		if ((strncmp(line, "exit", 4) == 0) && (lineSize == 5)) {

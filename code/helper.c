@@ -31,22 +31,52 @@ void cd(char* line, int lineSize) {
 }
 
 char* search_for_dollars(char* line, int lineSize) {
-    printf("line: [%s]\nlineSize: [%d]\n", line, lineSize);
+    printf("line: [%s]\nlineSize: [%d]\n", line, lineSize); 
 
-    // char* str = calloc(1000, sizeof(char));
-    // memset(str, '\0', 1000);
+    // random number for testing purposes
+    int num = rand() % 10000 + 1;
+    char randStr[6];
+    memset(randStr, '\0', 6);
+    sprintf(randStr, "%d", num);
 
-    int* idxArr = NULL;
+    // create a copy of input string
+    char* tempStr = calloc(strlen(line) + 1, sizeof(char));
+    memset(tempStr, '\0', strlen(tempStr));
+    strcpy(tempStr, line);
+    free(line);
+    line = NULL;
 
-    for (int i = 0; i < lineSize - 1; i++) {
-        if ((line[i] == '$') && (line[i + 1] == '$')) {
-            // expand $$
-            // for (int j = 0; j < i; j++) {
-            //     str[j] = line[j];
-            // }
+    char* subStr = NULL;
+    char* newStr = NULL;
+    while (1) {
+        // find first occurence of $$
+        subStr = strstr(tempStr, "$$");
+        printf("subStr: [%s]\n", subStr);
 
-            // add the index of $$ to idxArr
+        // if there is no $$ in string
+        if (subStr == NULL)
+            return tempStr;
+
+        // allocate space for a new string
+        newStr = calloc(strlen(tempStr) + strlen(randStr) - 2 + 1, sizeof(char));
+        memset(newStr, '\0', strlen(tempStr) + strlen(randStr) - 2 + 1);
+
+        // copy over 1st part of the string (before $$)
+        int i = 0;
+        while (&tempStr[i] != subStr) {
+            newStr[i] = tempStr[i];
             i++;
         }
+
+        // append the PID
+        strcat(newStr, randStr);
+        // append the rest of the string (after $$)
+        strcat(newStr, subStr + (2 * sizeof(char))); // increment subStr ptr over 2 places
+
+        printf("newStr: [%s]", newStr);
+
+        // free old string
+        free(tempStr);
+        tempStr = newStr;
     }
 }
