@@ -8,10 +8,9 @@ int main() {
 	
 	while (1) {
 		// prompt and get input
-		printf(": ");
-		fflush(stdout);
-		lineSize = getline(&line, &len, stdin);
-
+		printf(": "); fflush(stdout);
+		lineSize = getline(&line, &len, stdin); fflush(stdin);
+		
 		// blank line and comments
 		if ((lineSize == 1) || (line[0] == '#')) {
 			free(line);
@@ -21,8 +20,6 @@ int main() {
 
 		// expand dollars $$
 		line = expand_dollars(line, lineSize);
-		// printf("line: %s\n", line);
-		// fflush(stdout);
 
 		// exit
 		if ((strncmp(line, "exit", 4) == 0) && (lineSize == 5)) {
@@ -33,7 +30,7 @@ int main() {
 
 		// cd
 		// if lineSize == 4, cd is invalid (cd_) or (cdw)
-		// if line[2] != ' ', then user is not trying to change directory and that command should be passed to OS
+		// if line[2] != ' ' or '\n', then user is not trying to change directory and that command should be passed to OS
 		else if ((strncmp(line, "cd", 2) == 0) && (lineSize != 4) && ((line[2] == ' ') || line[2] == '\n'))
 			cd(line, lineSize);
 		
