@@ -29,7 +29,7 @@ int main() {
 
         // tokenize the input string
         process_str(line, &input);
-        // print_input(&input);
+        print_input(&input);
 
         // exit
         if ((strcmp(input.cmnd, "exit") == 0) && (input.args[0] == NULL) && (input.iFile == NULL) && (input.oFile == NULL)) {
@@ -43,6 +43,7 @@ int main() {
         if ((strcmp(input.cmnd, "cd") == 0) && (input.args[1] == NULL) && (input.iFile == NULL) && (input.oFile == NULL))
             cd(input.args[0]);
         
+        if ((strcmp(input.cmnd, "status") == 0))
 
         free(line);
         line = NULL;

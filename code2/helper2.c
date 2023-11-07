@@ -63,6 +63,10 @@ void process_str(char* line, struct Input* input) {
     erase_input(input);
     char* savePtr = NULL;
 
+    int loneAmpCt = 0;
+    int isBG = determine_bg2(line, &loneAmpCt);
+    input->bg = isBG;
+
     // first token is the command
     char* token = strtok_r(line, " \n", &savePtr); // delimited by spaces and newlines
     input->cmnd = calloc(strlen(token) + 1, sizeof(char));
@@ -73,7 +77,7 @@ void process_str(char* line, struct Input* input) {
     int iFileRead = 0;
     int oCarrotFound = 0;
     int oFileRead = 0;
-    int bgFound = 0;
+    int tokenAmpCt = 0;
     int i = 0;
     while (token != NULL) {
         token = strtok_r(NULL, " \n", &savePtr);
@@ -91,12 +95,14 @@ void process_str(char* line, struct Input* input) {
             continue;
         }
 
-        if (strcmp(token, "&") == 0) {
-            bgFound = 1;
-            continue;
+        // add & to args list if they are not at the end of the string
+        if ((strcmp(token, "&") == 0) && (isBG == 1)) {
+            ++tokenAmpCt;
+            if (tokenAmpCt == loneAmpCt) 
+                continue;
         }
 
-        if ((iCarrotFound == 0) && (oCarrotFound == 0) && (bgFound == 0)) {
+        if ((iCarrotFound == 0) && (oCarrotFound == 0)) {
             // add arguments to args list
             input->args[i] = calloc(strlen(token) + 1, sizeof(char));
             memset(input->args[i], '\0', strlen(token) + 1);
@@ -104,7 +110,7 @@ void process_str(char* line, struct Input* input) {
             ++i;
         }
 
-        if ((iCarrotFound == 1) && (iFileRead == 0) && (bgFound == 0)) {
+        if ((iCarrotFound == 1) && (iFileRead == 0)) {
             // read iFile
             input->iFile = calloc(strlen(token) + 1, sizeof(char));
             memset(input->iFile, '\0', strlen(token) + 1);
@@ -113,7 +119,7 @@ void process_str(char* line, struct Input* input) {
             iFileRead = 1;
         }
 
-        if ((oCarrotFound == 1) && (oFileRead == 0) && (bgFound == 0)) {
+        if ((oCarrotFound == 1) && (oFileRead == 0)) {
             // read oFile
             input->oFile = calloc(strlen(token) + 1, sizeof(char));
             memset(input->oFile, '\0', strlen(token) + 1);
@@ -127,8 +133,58 @@ void process_str(char* line, struct Input* input) {
         input->iFile = NULL;
     if (oCarrotFound == 0)
         input->oFile = NULL;
-    if (bgFound == 1)
-        input->bg = 1;
+}
+
+// int determine_bg(char* line, int* ampCt) {
+//     char* tempStr = NULL;
+//     char* subStr = strstr(line, "&");
+
+//     // if there are no & in string
+//     if (subStr == NULL)
+//         return 0;
+//     else {
+//         // check if & is alone or not
+//         *ampCt += 1;
+//         while (1) {
+//             // move pointer over 1 space to the right of &
+//             tempStr = &subStr[1];
+//             // look for more &'s in string
+//             subStr = strstr(tempStr, "&");
+
+//             // if we've seen all &'s in string
+//             if (subStr == NULL)
+//                 break;
+//             else 
+//                 *ampCt += 1;
+//         }
+
+//         // valid background command
+//         if ((line[strlen(line) - 2] == '&') && (line[strlen(line) - 3] == ' '))
+//             return 1;
+//         else 
+//             return 0;
+//     }
+// }
+
+int determine_bg2(char* line, int* loneAmpCt) {
+    char* savePtr = NULL;
+    char* lineCopy = calloc(strlen(line) + 1, sizeof(char));
+    memset(lineCopy, '\0', strlen(line) + 1);
+    strcpy(lineCopy, line);
+    char* token = strtok(lineCopy, " \n");
+
+    while (token != NULL) {
+        if (strcmp(token, "&") == 0) 
+            *loneAmpCt += 1;
+        
+        token = strtok(NULL, " \n");
+    }
+
+    // valid background command
+    if ((line[strlen(line) - 2] == '&') && (line[strlen(line) - 3] == ' '))
+        return 1;
+    else 
+        return 0;
 }
 
 void erase_input(struct Input* input) {
@@ -212,4 +268,6 @@ void cd(char* path) {
     // 	memset(fName, '\0', 60);
     // 	strcat(fName, rand_num_str);
     // 	strcat(fName, ".smallsh");
-    // 	int fDesc = open(
+    // 	int fDesc = open(fName, O_CREAT, 0640);
+    // }
+}
