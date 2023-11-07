@@ -2,8 +2,8 @@
 
 int main() {
     struct Input input;
-
-    // set input struct values all to NULL
+    // set all member variables of input to NULL
+    initialize_input(&input);
 
     int status = -2;
 

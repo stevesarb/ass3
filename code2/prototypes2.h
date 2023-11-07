@@ -24,11 +24,15 @@ struct Arg {
 
 
 // void cd(char*, int);
-
+void initialize_input(struct Input*);
 char* expand_dollars(char*, int);
 void process_str(char*, struct Input*);
 void erase_input(struct Input*);
 void erase_args(struct Arg*);
+void add_arg(struct Arg**, struct Arg**, char*);
+
+void print_input(struct Input*);
+void print_args(struct Arg*);
 
 
 #endif

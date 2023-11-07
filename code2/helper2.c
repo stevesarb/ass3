@@ -1,5 +1,13 @@
 #include "prototypes2.h"
 
+void initialize_input(struct Input* input) {
+    input->cmnd = NULL;
+    input->args = NULL;
+    input->iFile = NULL;
+    input->oFile = NULL;
+    input->bg = 0;
+}
+
 char* expand_dollars(char* line, int lineSize) {
 
     // get pid
@@ -48,7 +56,7 @@ char* expand_dollars(char* line, int lineSize) {
 }
 
 void process_str(char* line, struct Input* input) {
-    erase_input(&input);
+    erase_input(input);
     char* savePtr = NULL;
 
     // first token is the command
@@ -57,17 +65,19 @@ void process_str(char* line, struct Input* input) {
     memset(input->cmnd, '\0', strlen(token) + 1);
     strcpy(input->cmnd, token);
 
-    if (token == NULL)
-        return;
+    // if (token == NULL)
+    //     return;
 
-    printf("token: [%s]\n", token);
-    fflush(stdout);
+    // printf("token: [%s]\n", token);
+    // fflush(stdout);
 
     int iCarrotFound = 0;
     int iFileRead = 0;
     int oCarrotFound = 0;
     int oFileRead = 0;
     int bgFound = 0;
+    struct Arg* head = NULL;
+    struct Arg* tail = NULL;
     while (token != NULL) {
         token = strtok_r(NULL, " \n", &savePtr);
 
@@ -76,31 +86,39 @@ void process_str(char* line, struct Input* input) {
 
         if (strcmp(token, "<") == 0) {
             iCarrotFound = 1;
+            continue;
         }
-
-        // THESE NEED TO BE ELSE IF's
-
 
         if (strcmp(token, ">") == 0) {
             oCarrotFound = 1;
+            continue;
         }
 
         if (strcmp(token, "&") == 0) {
             bgFound = 1;
+            continue;
         }
 
         if ((iCarrotFound == 0) && (oCarrotFound == 0) && (bgFound == 0)) {
             // add arguments to args list
+            // printf("IN ADD ARGS TO ARGS LIST\n"); fflush(stdout);
+            add_arg(&head, &tail, token);
         }
 
         if ((iCarrotFound == 1) && (iFileRead == 0) && (bgFound == 0)) {
             // read iFile
+            input->iFile = calloc(strlen(token) + 1, sizeof(char));
+            memset(input->iFile, '\0', strlen(token) + 1);
+            strcpy(input->iFile, token);
 
             iFileRead = 1;
         }
 
         if ((oCarrotFound == 1) && (oFileRead == 0) && (bgFound == 0)) {
             // read oFile
+            input->oFile = calloc(strlen(token) + 1, sizeof(char));
+            memset(input->oFile, '\0', strlen(token) + 1);
+            strcpy(input->oFile, token);
 
             oFileRead = 1;
         }
@@ -108,10 +126,14 @@ void process_str(char* line, struct Input* input) {
 
     }
 
+    input->args = head;
+
     if (iCarrotFound == 0)
-        input.iFile = NULL;
+        input->iFile = NULL;
     if (oCarrotFound == 0)
-        input.oFile = NULL;
+        input->oFile = NULL;
+    if (bgFound == 1)
+        input->bg = 1;
 }
 
 void erase_input(struct Input* input) {
@@ -144,4 +166,42 @@ void erase_args(struct Arg* arg) {
         erase_args(arg->next);
     }
     free(arg);
+}
+
+void add_arg(struct Arg** head, struct Arg** tail, char* token) {
+    // struct Arg* head = *headPtr;
+    // struct Arg* tail = *tailPtr;
+    if (*head == NULL) {
+        *head = malloc(sizeof(struct Arg));
+        (*head)->arg = calloc(strlen(token) + 1, sizeof(char));
+        memset((*head)->arg, '\0', strlen(token) + 1);
+        strcpy((*head)->arg, token);
+        (*head)->next = NULL;
+        *tail = *head;
+    }
+
+    else {
+        (*tail)->next = malloc(sizeof(struct Arg));
+        *tail = (*tail)->next;
+        (*tail)->arg = calloc(strlen(token) + 1, sizeof(char));
+        memset((*tail)->arg, '\0', strlen(token) + 1);
+        strcpy((*tail)->arg, token);
+        (*tail)->next = NULL;
+    }
+}
+
+void print_input(struct Input* input) {
+    printf("Command: [%s]\n", input->cmnd);
+    print_args(input->args);
+    printf("iFile: [%s]\n", input->iFile);
+    printf("oFile: [%s]\n", input->oFile);
+    printf("bg: %d\n", input->bg);
+    fflush(stdout);
+}
+
+void print_args(struct Arg* node) {
+    if (node != NULL) {
+        printf("Arg: [%s]\n", node->arg);
+        print_args(node->next);
+    }
 }
