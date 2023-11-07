@@ -2,7 +2,11 @@
 
 void initialize_input(struct Input* input) {
     input->cmnd = NULL;
-    input->args = NULL;
+    int i = 0;
+    while (i < 512) {
+        input->args[i] = NULL;
+        ++i;
+    }
     input->iFile = NULL;
     input->oFile = NULL;
     input->bg = 0;
@@ -65,19 +69,12 @@ void process_str(char* line, struct Input* input) {
     memset(input->cmnd, '\0', strlen(token) + 1);
     strcpy(input->cmnd, token);
 
-    // if (token == NULL)
-    //     return;
-
-    // printf("token: [%s]\n", token);
-    // fflush(stdout);
-
     int iCarrotFound = 0;
     int iFileRead = 0;
     int oCarrotFound = 0;
     int oFileRead = 0;
     int bgFound = 0;
-    struct Arg* head = NULL;
-    struct Arg* tail = NULL;
+    int i = 0;
     while (token != NULL) {
         token = strtok_r(NULL, " \n", &savePtr);
 
@@ -101,8 +98,10 @@ void process_str(char* line, struct Input* input) {
 
         if ((iCarrotFound == 0) && (oCarrotFound == 0) && (bgFound == 0)) {
             // add arguments to args list
-            // printf("IN ADD ARGS TO ARGS LIST\n"); fflush(stdout);
-            add_arg(&head, &tail, token);
+            input->args[i] = calloc(strlen(token) + 1, sizeof(char));
+            memset(input->args[i], '\0', strlen(token) + 1);
+            strcpy(input->args[i], token);
+            ++i;
         }
 
         if ((iCarrotFound == 1) && (iFileRead == 0) && (bgFound == 0)) {
@@ -122,11 +121,7 @@ void process_str(char* line, struct Input* input) {
 
             oFileRead = 1;
         }
-
-
     }
-
-    input->args = head;
 
     if (iCarrotFound == 0)
         input->iFile = NULL;
@@ -142,9 +137,13 @@ void erase_input(struct Input* input) {
         input->cmnd = NULL;
     }
 
-    if (input->args != NULL) {
-        erase_args(input->args);
-        input->args = NULL;
+    int i = 0;
+    while (i < 512) {
+        if (input->args[i] != NULL) {
+            free(input->args[i]);
+            input->args[i] = NULL;
+        }
+        ++i;
     }
 
     if (input->iFile != NULL) {
@@ -161,47 +160,56 @@ void erase_input(struct Input* input) {
         input->bg = 0;
 }
 
-void erase_args(struct Arg* arg) {
-    if (arg->next != NULL) {
-        erase_args(arg->next);
-    }
-    free(arg);
-}
-
-void add_arg(struct Arg** head, struct Arg** tail, char* token) {
-    // struct Arg* head = *headPtr;
-    // struct Arg* tail = *tailPtr;
-    if (*head == NULL) {
-        *head = malloc(sizeof(struct Arg));
-        (*head)->arg = calloc(strlen(token) + 1, sizeof(char));
-        memset((*head)->arg, '\0', strlen(token) + 1);
-        strcpy((*head)->arg, token);
-        (*head)->next = NULL;
-        *tail = *head;
-    }
-
-    else {
-        (*tail)->next = malloc(sizeof(struct Arg));
-        *tail = (*tail)->next;
-        (*tail)->arg = calloc(strlen(token) + 1, sizeof(char));
-        memset((*tail)->arg, '\0', strlen(token) + 1);
-        strcpy((*tail)->arg, token);
-        (*tail)->next = NULL;
-    }
-}
-
 void print_input(struct Input* input) {
     printf("Command: [%s]\n", input->cmnd);
-    print_args(input->args);
+    // print_args(input->args);
+    int i = 0;
+    while (i < 512) {
+        if (input->args[i] != NULL) {
+            printf("Arg %d: [%s]\n", i + 1, input->args[i]);
+            fflush(stdout);
+        }
+        ++i;
+    }
     printf("iFile: [%s]\n", input->iFile);
     printf("oFile: [%s]\n", input->oFile);
     printf("bg: %d\n", input->bg);
     fflush(stdout);
 }
 
-void print_args(struct Arg* node) {
-    if (node != NULL) {
-        printf("Arg: [%s]\n", node->arg);
-        print_args(node->next);
+void cd(char* path) {
+    // cd to home directory
+    if (path == NULL) 
+        chdir(getenv("HOME"));
+    else {
+        // if cd with absolute path from home directory
+        if (path[0] == '~') {
+            char* homePath = getenv("HOME");
+            // allocate space for new string
+            char* fullPath = calloc(strlen(homePath) + strlen(path), sizeof(char));
+            memset(fullPath, '\0', strlen(homePath) + strlen(path));
+            // cat homePath to fullPath
+            strcat(fullPath, homePath);
+            // cat remainder of path (after ~) to fullPath
+            strcat(fullPath, &path[1]);
+            // cd
+            if (chdir(fullPath) != 0) 
+                perror("");   
+        }
+
+        // cd to specified path (relative or absolute)
+        else
+            if (chdir(path) != 0) 
+                perror("");       
     }
-}
+
+    // if (1) {
+    // 	int num = rand() % 10000 + 1;
+    // 	char rand_num_str[50];
+    // 	char fName[60];
+    // 	memset(rand_num_str, '\0', 50);
+    // 	sprintf(rand_num_str, "%d", num);
+    // 	memset(fName, '\0', 60);
+    // 	strcat(fName, rand_num_str);
+    // 	strcat(fName, ".smallsh");
+    // 	int fDesc = open(

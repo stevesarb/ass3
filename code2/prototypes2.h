@@ -11,7 +11,7 @@
 
 struct Input {
     char* cmnd;
-    struct Arg* args;
+    char* args[512];
     char* iFile;
     char* oFile;
     int bg;
