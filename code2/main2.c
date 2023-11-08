@@ -77,8 +77,8 @@ int main() {
                     waitpid(spawnpid, &childExitMethod, 0);
                     if (WIFEXITED(childExitMethod)) {
                         status = WIFEXITED(childExitMethod); // get the exit status (of the child?)
-                        exitStr = getenv("?");
-                        printf("exitStr ($?): %s\n", exitStr); fflush(stdout);
+                        // exitStr = getenv("?");
+                        // printf("exitStr ($?): %s\n", exitStr); fflush(stdout);
                     }
                     else {
                         // process was terminated by a signal

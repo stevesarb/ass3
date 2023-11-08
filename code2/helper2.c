@@ -267,26 +267,28 @@ void cd(char* path) {
 }
 
 void output_status(int* status, char* exitStr, char* oFile) {
-    char* exitVal = NULL;
+    // char* exitVal = NULL;
+    int exitVal;
     FILE* file = NULL;
     // if status is run before any other foreground command
     if (*status == -2) {
-        // exitVal = 0;
-        exitVal = calloc(2, sizeof(char));
-        memset(exitVal, '\0', strlen(exitVal));
-        exitVal[0] = '0';
+        exitVal = 0;
+        // exitVal = calloc(2, sizeof(char));
+        // memset(exitVal, '\0', strlen(exitVal));
+        // exitVal[0] = '0';
     }
 
     // if last foreground command run was not a built-in command
     else if (*status != -1) {
         // exitVal = getenv("?");
-        exitVal = exitStr;
+        // exitVal = exitStr;
+        exitVal = *status;
     }
 
     if (*status != -1) {
         // if no output redirection file was specified
         if (oFile == NULL) {
-            printf("Exit value: %s\n", exitVal); fflush(stdout);
+            printf("Exit value: %d\n", exitVal); fflush(stdout);
         }
             
         else {
@@ -298,7 +300,7 @@ void output_status(int* status, char* exitStr, char* oFile) {
                 return;
             }
             else {
-                fprintf(file, "%s", exitVal);
+                fprintf(file, "%d", exitVal);
                 fclose(file);
             }
         }
