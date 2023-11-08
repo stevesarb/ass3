@@ -6,11 +6,13 @@ int main() {
     // set all member variables of input to NULL
     initialize_input(&input);
 
-    int status = -2;
+    int status = -2; // -2 is unique so the status command knows if it is the first process to run
 
     char* line = NULL;
     size_t len = 0;
     ssize_t lineSize = 0;
+
+    char* exitStr = NULL;
 
     while (1) {
         // prompt and get input
@@ -31,50 +33,60 @@ int main() {
         process_str(line, &input);
         // print_input(&input);
 
+
         // exit
-        if ((strcmp(input.cmnd, "exit") == 0) && (input.args[0] == NULL) && (input.iFile == NULL) && (input.oFile == NULL)) {
+        if ((strcmp(input.cmnd, "exit") == 0) && (input.args[1] == NULL) && (input.iFile == NULL) && (input.oFile == NULL)) {
             // kill of child process or jobs
             printf("IN EXIT\n"); fflush(stdout);
             break;
         }
 
         // cd
-        if ((strcmp(input.cmnd, "cd") == 0) && (input.args[1] == NULL) && (input.iFile == NULL) && (input.oFile == NULL)) {
-            cd(input.args[0]);
-            status = -1;
+        else if ((strcmp(input.cmnd, "cd") == 0) && (input.args[2] == NULL) && (input.iFile == NULL) && (input.oFile == NULL)) {
+            cd(input.args[1]);
+            status = -1; // built-in commands exit status get ignored
         }
         
         // status
-        if ((strcmp(input.cmnd, "status") == 0) && (input.args[0] == NULL) && (input.iFile == NULL)) {
-            // char exitVal[4] = {'\0', '\0', '\0', '\0'};
-            char* exitVal = NULL;
+        else if ((strcmp(input.cmnd, "status") == 0) && (input.args[1] == NULL) && (input.iFile == NULL)) {
+            output_status(&status, exitStr, input.oFile);
+            status = -1; // built-in commands exit status get ignored
+        }
 
-            // if status is run before any other foreground command
-            if (status == -2) {
-                exitVal = calloc(2, sizeof(char));
-                memset(exitVal, '\0', strlen(exitVal));
-                exitVal[0] = '0';
+        // fork and exec time baby!
+        else {
+            pid_t spawnpid = -5;
+            int childExitMethod = -5;
+            spawnpid = fork();
+
+            if (spawnpid == -1) {
+                perror("fork() failed, exiting\n");
+                exit(1);
             }
+            else if (spawnpid == 0) {
+                printf("I AM THE CHILD\n"); fflush(stdout);
 
-            // if last foreground command run was not a built-in command
-            else if (status != -1)
-                exitVal = getenv("?");
-
-            if (status != -1) {
-                // if no output redirection file was specified
-                if (input.oFile == NULL) {
-                    printf("Exit value: %s\n", exitVal); fflush(stdout);
+                // exec stuff
+                if (execvp(input.cmnd, input.args) < 0) {
+                    perror("Exec failure!\n"); fflush(stderr);
+                    exit(0);
                 }
+            }
+            else {
+                if (input.bg == 0) {
+                    waitpid(spawnpid, &childExitMethod, 0);
+                    if (WIFEXITED(childExitMethod)) {
+                        status = WIFEXITED(childExitMethod); // get the exit status (of the child?)
+                        exitStr = getenv("?");
+                        printf("exitStr ($?): %s\n", exitStr); fflush(stdout);
+                    }
+                    else {
+                        // process was terminated by a signal
+                    }
                     
-                else {
-                    // write status to file
-                    int fileDesc = open(input.oFile, O_WRONLY | O_CREAT | O_TRUNC, 0640);
-                    int nWritten = write(fileDesc, exitVal, strlen(exitVal) * sizeof(char));
-                    close(fileDesc);
+                    printf("Parent process resumed!\n"); fflush(stdout);
                 }
             }
-            status = -1;
-            free(exitVal);
         }
 
 

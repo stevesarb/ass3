@@ -72,13 +72,19 @@ void process_str(char* line, struct Input* input) {
     input->cmnd = calloc(strlen(token) + 1, sizeof(char));
     memset(input->cmnd, '\0', strlen(token) + 1);
     strcpy(input->cmnd, token);
+    
+    // set first argument to be the same as the command
+    input->args[0] = calloc(strlen(token) + 1, sizeof(char));
+    memset(input->args[0], '\0', strlen(token) + 1);
+    strcpy(input->args[0], token);
+
 
     int iCarrotFound = 0;
     int iFileRead = 0;
     int oCarrotFound = 0;
     int oFileRead = 0;
     int tokenAmpCt = 0;
-    int i = 0;
+    int i = 1;
     while (token != NULL) {
         token = strtok_r(NULL, " \n", &savePtr);
 
@@ -258,16 +264,43 @@ void cd(char* path) {
             if (chdir(path) != 0) 
                 perror("");       
     }
+}
 
-    // if (1) {
-    // 	int num = rand() % 10000 + 1;
-    // 	char rand_num_str[50];
-    // 	char fName[60];
-    // 	memset(rand_num_str, '\0', 50);
-    // 	sprintf(rand_num_str, "%d", num);
-    // 	memset(fName, '\0', 60);
-    // 	strcat(fName, rand_num_str);
-    // 	strcat(fName, ".smallsh");
-    // 	int fDesc = open(fName, O_CREAT, 0640);
-    // }
+void output_status(int* status, char* exitStr, char* oFile) {
+    char* exitVal = NULL;
+    FILE* file = NULL;
+    // if status is run before any other foreground command
+    if (*status == -2) {
+        // exitVal = 0;
+        exitVal = calloc(2, sizeof(char));
+        memset(exitVal, '\0', strlen(exitVal));
+        exitVal[0] = '0';
+    }
+
+    // if last foreground command run was not a built-in command
+    else if (*status != -1) {
+        // exitVal = getenv("?");
+        exitVal = exitStr;
+    }
+
+    if (*status != -1) {
+        // if no output redirection file was specified
+        if (oFile == NULL) {
+            printf("Exit value: %s\n", exitVal); fflush(stdout);
+        }
+            
+        else {
+            // write status to file
+            file = fopen(oFile, "w");
+            if (file == NULL) {
+                perror("Failed to open specified output file\n"); fflush(stderr);
+                *status = 1;
+                return;
+            }
+            else {
+                fprintf(file, "%s", exitVal);
+                fclose(file);
+            }
+        }
+    }
 }

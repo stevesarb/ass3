@@ -32,6 +32,7 @@ void erase_args(struct Arg*);
 void add_arg(struct Arg**, struct Arg**, char*);
 int determine_bg(char*, int*);
 int determine_bg2(char*, int*);
+void output_status(int*, char*, char*);
 
 void print_input(struct Input*);
 void print_args(struct Arg*);
