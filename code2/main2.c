@@ -14,6 +14,10 @@ int main() {
 
     char* exitStr = NULL;
 
+    int sourceFD = -5;
+    int targetFD = -5;
+    int result = -5;
+
     while (1) {
         // prompt and get input
 		printf(": "); fflush(stdout);
@@ -57,6 +61,9 @@ int main() {
         else {
             pid_t spawnpid = -5;
             int childExitMethod = -5;
+
+            
+
             spawnpid = fork();
 
             if (spawnpid == -1) {
@@ -65,6 +72,29 @@ int main() {
             }
             else if (spawnpid == 0) {
                 printf("I AM THE CHILD\n"); fflush(stdout);
+
+                // i/o redirection here
+                if (input.iFile != NULL) {
+                    sourceFD = open(input.iFile, O_RDONLY);
+                    if (sourceFD == -1) {
+                        perror("error with opening input file\n"); fflush(stderr);
+                    }
+                    result = dup2(sourceFD, 0);
+                    if (result == -1) {
+                        perror("error with source dup2()\n"); fflush(stderr);
+                    }
+                }
+
+                if (input.oFile != NULL) {
+                    targetFD = open(input.oFile, O_WRONLY | O_CREAT | O_TRUNC, 0760);
+                    if (targetFD == -1) {
+                        perror("error with opening output file\n"); fflush(stderr);
+                    }
+                    result = dup2(targetFD, 1);
+                    if (result == -1) {
+                        perror("error with target dup2()\n"); fflush(stderr);
+                    }
+                }
 
                 // exec stuff
                 if (execvp(input.cmnd, input.args) < 0) {
@@ -76,7 +106,7 @@ int main() {
                 if (input.bg == 0) {
                     waitpid(spawnpid, &childExitMethod, 0);
                     if (WIFEXITED(childExitMethod)) {
-                        status = WIFEXITED(childExitMethod); // get the exit status (of the child?)
+                        status = WEXITSTATUS(childExitMethod); // get the exit status (of the child?)
                         // exitStr = getenv("?");
                         // printf("exitStr ($?): %s\n", exitStr); fflush(stdout);
                     }

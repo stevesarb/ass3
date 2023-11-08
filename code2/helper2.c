@@ -141,37 +141,6 @@ void process_str(char* line, struct Input* input) {
         input->oFile = NULL;
 }
 
-// int determine_bg(char* line, int* ampCt) {
-//     char* tempStr = NULL;
-//     char* subStr = strstr(line, "&");
-
-//     // if there are no & in string
-//     if (subStr == NULL)
-//         return 0;
-//     else {
-//         // check if & is alone or not
-//         *ampCt += 1;
-//         while (1) {
-//             // move pointer over 1 space to the right of &
-//             tempStr = &subStr[1];
-//             // look for more &'s in string
-//             subStr = strstr(tempStr, "&");
-
-//             // if we've seen all &'s in string
-//             if (subStr == NULL)
-//                 break;
-//             else 
-//                 *ampCt += 1;
-//         }
-
-//         // valid background command
-//         if ((line[strlen(line) - 2] == '&') && (line[strlen(line) - 3] == ' '))
-//             return 1;
-//         else 
-//             return 0;
-//     }
-// }
-
 int determine_bg2(char* line, int* loneAmpCt) {
     char* savePtr = NULL;
     char* lineCopy = calloc(strlen(line) + 1, sizeof(char));
