@@ -1,6 +1,21 @@
-#include "prototypes2.h"
+#include "helper2.c"
 
 int main() {
+
+    // signal stuff
+    SIGTSTP_action1.sa_handler = catchSIGTSTP1;
+	sigfillset(&SIGTSTP_action1.sa_mask);
+	SIGTSTP_action1.sa_flags = 0;
+    sigaction(SIGTSTP, &SIGTSTP_action1, NULL);
+
+    SIGTSTP_action2.sa_handler = catchSIGTSTP2;
+	sigfillset(&SIGTSTP_action2.sa_mask);
+	SIGTSTP_action2.sa_flags = 0;
+    // sigaction(SIGTSTP, &SIGTSTP_action2, NULL);
+
+    signal(SIGINT, SIG_IGN);
+
+
     struct Input input;
 
     // set all member variables of input to NULL
@@ -29,6 +44,12 @@ int main() {
         // prompt and get input
 		printf(": "); fflush(stdout);
 		lineSize = getline(&line, &len, stdin); fflush(stdin);
+
+        // line size will be < 0 if program recieved a signal
+        if (lineSize < 0) {
+            clearerr(stdin); // remove junk from stdin (avoids uncontrolled looping)
+            continue;
+        }
 
         // blank line and comments
 		if ((lineSize == 1) || (line[0] == '#')) {
@@ -158,10 +179,17 @@ int main() {
                     }
                 }
 
+                // if child is to be run in the foreground, don't ignore SIGINT
+                if (input.bg == 0) {
+                    signal(SIGINT, SIG_DFL);
+                }
+
+                // all children must ignore SIGTSTP
+                signal(SIGTSTP, SIG_IGN);
+
                 // exec stuff
                 if (execvp(input.cmnd, input.args) < 0) {
                     perror("smallsh: exec() failure"); fflush(stderr);
-                    sleep(10);
                     exit(1);
                 }
             }
@@ -176,9 +204,8 @@ int main() {
                     else {
                         // process was terminated by a signal
                         status = WTERMSIG(childExitMethod);
+                        printf("smallsh:\nChild process was killed by signal\n    PID: %d\n    Signal: %d\n", spawnpid, status);
                     }
-                    
-                    // printf("Parent process resumed!\n"); fflush(stdout);
                 }
 
                 // background command
