@@ -2,58 +2,194 @@
 #include <stdlib.h>
 #include <string.h>
 #include <fcntl.h>
-#include <time.h>
 #include <unistd.h>
 #include <sys/types.h>
 #include <signal.h>
 
 struct Input {
     char* cmnd;
-    char* args[512];
+    char* args[513];
     char* iFile;
     char* oFile;
     int bg;
 };
 
 // global variables
-struct sigaction SIGTSTP_action1 = {0}, SIGTSTP_action2 = {0};
-int fgOnlyMode = 0;
+int fgOnlyMode = 0, background = 0, childExitMethod = -5;
+pid_t spawnpid = -5;
 
-void initialize_input(struct Input*);
+// function prototypes
 char* expand_dollars(char*, int);
 void process_str(char*, struct Input*);
 void erase_input(struct Input*);
-int determine_bg2(char*, int*);
-void output_status(int*, char*, char*);
+int determine_bg(char*, int*);
 void cd(char*);
 pid_t* add_pid(pid_t*, int*, int);
 pid_t* check_bg(pid_t*, int*);
 int* add_idx(int*, int*, int);
 pid_t* remove_pids(pid_t*, int*, int*, int);
 void kill_processes(pid_t*, int);
-void catchSIGTSTP1(int);
-void catchSIGTSTP2(int);
-
+void SIGTSTP_handler(int);
+void io_redirect(struct Input);
 void print_input(struct Input*);
 
-void initialize_input(struct Input* input) {
-    input->cmnd = NULL;
-    int i = 0;
-    while (i < 512) {
-        input->args[i] = NULL;
-        ++i;
+
+int main() {
+    // variable declarations (vars associated with one another are on the same line)
+    int status = 0, exitN = 1;
+    char* line = NULL; size_t len = 0; ssize_t lineSize = 0;
+    pid_t* pidArr = NULL; int arrSize = 0;
+    struct Input input = {0};
+
+    // parent must catch SIGTSTP (ctrl-Z)
+    signal(SIGTSTP, SIGTSTP_handler);
+
+    // parent (and background child processes) must ignore SIGINT (ctrl-C)
+    signal(SIGINT, SIG_IGN);
+
+    while (1) {
+        // check on background processes
+        pidArr = check_bg(pidArr, &arrSize);
+
+        // prompt and get input
+		printf(": "); fflush(stdout);
+		lineSize = getline(&line, &len, stdin); fflush(stdin);
+
+        // if program recieved a signal
+        if (lineSize < 0) {
+            clearerr(stdin); // remove junk from stdin (avoids uncontrolled looping)
+            continue;
+        }
+
+        // blank line and comments
+		if ((lineSize == 1) || (line[0] == '#')) {
+			free(line); line = NULL;
+			continue;
+		}
+
+        // expand dollars $$
+		line = expand_dollars(line, lineSize);
+
+        // tokenize the input string and free the string
+        process_str(line, &input); free(line); line = NULL;
+
+        // if in foreground-only mode (triggered by SIGTSTP)
+        if (fgOnlyMode)
+            input.bg = 0;
+
+        // set global variable background to input.bg (for SIGTSTP signal handler)
+        background = input.bg;
+
+        // exit
+        if ((strcmp(input.cmnd, "exit") == 0) && (input.args[1] == NULL) && (input.iFile == NULL) && (input.oFile == NULL)) {
+            // kill of child process or jobs
+            kill_processes(pidArr, arrSize);
+            exit(0);
+        }
+
+        // cd
+        else if ((strcmp(input.cmnd, "cd") == 0) && (input.args[2] == NULL) && (input.iFile == NULL) && (input.oFile == NULL)) 
+            cd(input.args[1]);
+        
+        // status
+        else if ((strcmp(input.cmnd, "status") == 0) && (input.args[1] == NULL) && (input.iFile == NULL) && (input.oFile == NULL)) {
+            // if last child exited normally
+            if (exitN) 
+                printf("Exit value: %d\n", status);
+
+            // if last child was terminated by a signal
+            else
+                printf("Terminating signal: %d\n", status);
+            fflush(stdout);
+        }
+        
+        // fork and exec time baby!
+        else {
+            spawnpid = fork();
+
+            if (spawnpid == -1) {
+                perror("smallsh: fork() failed, exiting\n");
+                exit(1);
+            }
+
+            // child
+            else if (spawnpid == 0) {
+
+                // i/o redirection 
+                io_redirect(input);
+
+                // foreground children must not ignore SIGINT
+                if (input.bg == 0) 
+                    signal(SIGINT, SIG_DFL);
+
+                // all children must ignore SIGTSTP
+                signal(SIGTSTP, SIG_IGN);
+
+                // exec
+                if (execvp(input.cmnd, input.args) < 0) {
+                    perror("smallsh:\nexec() failure"); fflush(stderr);
+                    exit(1);
+                }
+            }
+
+            // parent
+            else {
+                // foreground command
+                if (input.bg == 0) {
+                    // wait for termination
+                    waitpid(spawnpid, &childExitMethod, 0);
+
+                    // if child process exited normally
+                    if (WIFEXITED(childExitMethod)) {
+                        status = WEXITSTATUS(childExitMethod); // get the exit status
+                        exitN = 1;
+                    }
+                    
+                    // if child process was terminated by a signal
+                    else {
+                        status = WTERMSIG(childExitMethod); // get the terminating signal
+                        exitN = 0;
+                        printf("smallsh:\nChild process was killed by signal\n    PID: %d\n    Signal: %d\n", spawnpid, status); fflush(stdout);
+                    }
+                }
+
+                // background command
+                else {
+                    // output PID
+                    printf("Background process PID: %d\n", spawnpid); fflush(stdout);
+
+                    // add PID to array of currently running background processes
+                    pidArr = add_pid(pidArr, &arrSize, spawnpid);
+                }
+            }
+        }
     }
-    input->iFile = NULL;
-    input->oFile = NULL;
-    input->bg = 0;
+}
+
+void SIGTSTP_handler(int signum) {
+    char* message = NULL;
+
+    // wait for foreground child process to terminate
+    if ((spawnpid != -5) && (background == 0)) 
+        waitpid(spawnpid, &childExitMethod, 0);
+    
+    if (fgOnlyMode) {
+        message = "\nExiting foreground-only mode\n: ";
+        write(STDOUT_FILENO, message, 32);
+        fgOnlyMode = 0;
+    }
+    else {
+        message = "\nEntering foreground-only mode (& is now ignored)\n: ";
+        write(STDOUT_FILENO, message, 52);
+        fgOnlyMode = 1;
+    }
 }
 
 char* expand_dollars(char* line, int lineSize) {
-
     // get pid
     pid_t pid = getpid();
-    char pidStr[10];
-    memset(pidStr, '\0', 10);
+    char pidStr[21]; // assuming a PID will never have more than 20 digits
+    memset(pidStr, '\0', 21);
     sprintf(pidStr, "%d", pid);
 
     // create a copy of input string
@@ -95,12 +231,15 @@ char* expand_dollars(char* line, int lineSize) {
     }
 }
 
+/*
+    tokenize the input string and assign appropriate values to Input struct
+*/
 void process_str(char* line, struct Input* input) {
     erase_input(input);
     char* savePtr = NULL;
 
     int loneAmpCt = 0;
-    int isBG = determine_bg2(line, &loneAmpCt);
+    int isBG = determine_bg(line, &loneAmpCt);
     input->bg = isBG;
 
     // first token is the command
@@ -177,7 +316,12 @@ void process_str(char* line, struct Input* input) {
         input->oFile = NULL;
 }
 
-int determine_bg2(char* line, int* loneAmpCt) {
+/* 
+    determines if the command is to be run in the background and counts the 
+    number of lone '&' characters there are in the input string so that the process_str 
+    function can treat them as normal arguments if they are not the last '&'
+*/
+int determine_bg(char* line, int* loneAmpCt) {
     char* savePtr = NULL;
     char* lineCopy = calloc(strlen(line) + 1, sizeof(char));
     memset(lineCopy, '\0', strlen(line) + 1);
@@ -187,7 +331,6 @@ int determine_bg2(char* line, int* loneAmpCt) {
     while (token != NULL) {
         if (strcmp(token, "&") == 0) 
             *loneAmpCt += 1;
-        
         token = strtok(NULL, " \n");
     }
 
@@ -198,6 +341,9 @@ int determine_bg2(char* line, int* loneAmpCt) {
         return 0;
 }
 
+/*
+    resets Input struct to NULL values so the process_str function can work properly
+*/
 void erase_input(struct Input* input) {
     if (input->cmnd != NULL) {
         free(input->cmnd);
@@ -205,7 +351,7 @@ void erase_input(struct Input* input) {
     }
 
     int i = 0;
-    while (i < 512) {
+    while (i < 513) {
         if (input->args[i] != NULL) {
             free(input->args[i]);
             input->args[i] = NULL;
@@ -227,11 +373,13 @@ void erase_input(struct Input* input) {
         input->bg = 0;
 }
 
+/*
+    debugging function
+*/
 void print_input(struct Input* input) {
     printf("Command: [%s]\n", input->cmnd);
-    // print_args(input->args);
     int i = 0;
-    while (i < 512) {
+    while (i < 513) {
         if (input->args[i] != NULL) {
             printf("Arg %d: [%s]\n", i + 1, input->args[i]);
             fflush(stdout);
@@ -271,38 +419,9 @@ void cd(char* path) {
     }
 }
 
-void output_status(int* status, char* exitStr, char* oFile) {
-    // char* exitVal = NULL;
-    int exitVal;
-    FILE* file = NULL;
-
-    // if status is run before any other foreground command
-    if (*status == -2) 
-        exitVal = 0;
-    else
-        exitVal = *status;
-    
-
-    // if no output redirection file was specified
-    if (oFile == NULL) {
-        printf("Exit value: %d\n", exitVal); fflush(stdout);
-    }
-        
-    else {
-        // write status to file
-        file = fopen(oFile, "w");
-        if (file == NULL) {
-            perror("smallsh: failed to open specified output file\n"); fflush(stderr);
-            *status = 1;
-            return;
-        }
-        else {
-            fprintf(file, "%d", exitVal);
-            fclose(file);
-        }
-    }
-}
-
+/*
+    add an element to a dynamic array
+*/
 pid_t* add_pid(pid_t* pidArr, int* size, pid_t newPid) {
     pid_t* newArr = NULL;
     // if array is empty
@@ -330,6 +449,10 @@ pid_t* add_pid(pid_t* pidArr, int* size, pid_t newPid) {
     return newArr;
 }
 
+/*
+    before giving user command line access again, check on all 
+    background processes to see if they've terminated
+*/
 pid_t* check_bg(pid_t* pidArr, int* size) {
     int i = 0;
     pid_t terminatedChild = -5;
@@ -345,7 +468,7 @@ pid_t* check_bg(pid_t* pidArr, int* size) {
 
         // if child has terminated
         if (terminatedChild != 0) {
-            printf("\nsmallsh:\nBackground process has terminated\n    PID: %d\n", terminatedChild); fflush(stdout);
+            printf("smallsh:\nBackground process has terminated\n    PID: %d\n", terminatedChild); fflush(stdout);
 
             // process exited normally
             if (WIFEXITED(childExitMethod)) {
@@ -359,13 +482,14 @@ pid_t* check_bg(pid_t* pidArr, int* size) {
                 printf("    Termination method: signaled\n    Signal: %d\n", status); fflush(stdout);
             }
             
-            // remove pid from array
+            // add index of process to index array
             idxs = add_idx(idxs, &idxsSize, i);
         }
 
         ++i;
     }
     
+    // remove the processes that have terminated
     pidArr = remove_pids(pidArr, size, idxs, idxsSize);
 
     if (idxs != NULL)
@@ -374,8 +498,12 @@ pid_t* check_bg(pid_t* pidArr, int* size) {
     return pidArr;
 }
 
+/*
+    add an element to a dynamic array
+*/
 int* add_idx(int* arr, int* size, int idx) {
     int* newArr = NULL;
+
     // if array is empty
     if (*size == 0) {
         newArr = calloc(1, sizeof(int));
@@ -401,6 +529,10 @@ int* add_idx(int* arr, int* size, int idx) {
     return newArr;
 }
 
+/*
+    remove elements from a dynamic array
+    (really just add all the elements that we don't want to be removed to a new array)
+*/
 pid_t* remove_pids(pid_t* pidArr, int* pidSize, int* idxArr, int idxsSize) {
     int i = 0, j = 0, found = 0, newArrSize = 0;
     pid_t* newArr = NULL;
@@ -442,10 +574,11 @@ pid_t* remove_pids(pid_t* pidArr, int* pidSize, int* idxArr, int idxsSize) {
     return newArr;
 }
 
+/*
+    before exiting smallsh, kill and reap all child processes
+*/
 void kill_processes(pid_t* arr, int size) {
-    int i = 0;
-    int terminatedChild = -5, childExitMethod = -5;
-    int killResult = -5;
+    int i = 0, terminatedChild = -5, childExitMethod = -5, killResult = -5;
 
     // iterate through array of PIDs
     while (i < size) {
@@ -456,262 +589,84 @@ void kill_processes(pid_t* arr, int size) {
         if (terminatedChild == 0) {
             // kill the process
             killResult = kill(arr[i], SIGKILL);
+
+            // reap it
+            terminatedChild = waitpid(arr[i], &childExitMethod, 0);
         }
         ++i;
     }
 }
 
-// void catchSIGTSTP1(int signo) {
-// 	char* message = "\nEntering foreground-only mode (& is now ignored)\n";
-//     write(STDOUT_FILENO, message, 50);
-//     fgOnlyMode = 1;
-//     sigaction(SIGTSTP, &SIGTSTP_action2, &SIGTSTP_action1);
-// }
+/*
+    child performs i/o redirection before executing itself
+*/
+void io_redirect(struct Input input) {
+    int sourceFD = -5, targetFD = -5, result = -5, devNull = -5;
 
-// void catchSIGTSTP2(int signo) {
-//     char* message = "\nExiting foreground-only mode\n";
-//     write(STDOUT_FILENO, message, 30);
-//     fgOnlyMode = 0;
-//     sigaction(SIGTSTP, &SIGTSTP_action1, &SIGTSTP_action2);
-// }
-
-void SIGTSTP_handler(int signum) {
-    char* message = NULL;
-    if (fgOnlyMode) {
-        message = "\nExiting foreground-only mode\n: ";
-        write(STDOUT_FILENO, message, 32);
-        fgOnlyMode = 0;
+    // if user specified an input file
+    if (input.iFile != NULL) {
+        sourceFD = open(input.iFile, O_RDONLY);
+        if (sourceFD < 0) {
+            perror("smallsh:\nerror with opening input file"); fflush(stderr);
+            exit(1);
+        }
+        result = dup2(sourceFD, 0);
+        if (result == -1) {
+            perror("smallsh:\nerror with source dup2()\n"); fflush(stderr);
+        }
     }
-    else {
-        message = "\nEntering foreground-only mode (& is now ignored)\n: ";
-        write(STDOUT_FILENO, message, 52);
-        fgOnlyMode = 1;
+
+    // if user did not specify an input file and this command is to be run in the background
+    else if ((input.iFile == NULL) && (input.bg == 1)) {
+        devNull = open("/dev/null", O_RDWR);
+        if (devNull < 0) {
+            perror("smallsh:\nerror with opening /dev/null\n"); fflush(stderr);
+            exit(1);
+        }
+        result = dup2(devNull, 0);
+        if (result == -1) {
+            perror("smallsh:\nerror with /dev/null dup2()\n"); fflush(stderr);
+            exit(1);
+        }
     }
-}
 
-int main() {
-    struct sigaction SIGTSTP_action0 = {0};
-
-    // catch SIGTSTP (ctrl-Z)
-    signal(SIGTSTP, SIGTSTP_handler);
-
-    // ignore SIGINT (ctrl-C)
-    signal(SIGINT, SIG_IGN);
-
-
-    struct Input input;
-
-    // set all member variables of input to NULL
-    initialize_input(&input);
-
-    int status = -2; // -2 is unique so the status command knows if it is the first process to run
-
-    char* line = NULL;
-    size_t len = 0;
-    ssize_t lineSize = 0;
-
-    char* exitStr = NULL;
-
-    int sourceFD = -5;
-    int targetFD = -5;
-    int result = -5;
-
-    pid_t* pidArr = NULL;
-    int arrSize = 0;
-
-    pid_t spawnpid = -5;
-    int childExitMethod = -5;
-    int devNull = -5;
-
-    while (1) {
-        // check on background processes
-        // sleep(1);
-        pidArr = check_bg(pidArr, &arrSize);
-
-        // prompt and get input
-		printf(": "); fflush(stdout);
-		lineSize = getline(&line, &len, stdin); fflush(stdin);
-
-        // line size will be < 0 if program recieved a signal
-        if (lineSize < 0) {
-            clearerr(stdin); // remove junk from stdin (avoids uncontrolled looping)
-            continue;
+    // if user specified an output file
+    if (input.oFile != NULL) {
+        targetFD = open(input.oFile, O_WRONLY | O_CREAT | O_TRUNC, 0760);
+        if (targetFD < 0) {
+            perror("smallsh:\nerror with opening output file"); fflush(stderr);
+            exit(1);
         }
-
-        // blank line and comments
-		if ((lineSize == 1) || (line[0] == '#')) {
-			free(line);
-			line = NULL;
-			continue;
-		}
-
-        // expand dollars $$
-		line = expand_dollars(line, lineSize);
-
-        // tokenize the input string
-        process_str(line, &input);
-        // print_input(&input);
-
-        // if in foreground-only mode
-        if (fgOnlyMode == 1)
-            input.bg = 0;
-
-        // exit
-        if ((strcmp(input.cmnd, "exit") == 0) && (input.args[1] == NULL) && (input.iFile == NULL) && (input.oFile == NULL)) {
-            // kill of child process or jobs
-            kill_processes(pidArr, arrSize);
-            break;
+        result = dup2(targetFD, 1);
+        if (result == -1) {
+            perror("smallsh:\nerror with target dup2()\n"); fflush(stderr);
+            exit(1);
         }
+    }
 
-        // cd
-        else if ((strcmp(input.cmnd, "cd") == 0) && (input.args[2] == NULL) && (input.iFile == NULL) && (input.oFile == NULL)) {
-            cd(input.args[1]);
-        }
-        
-        // status
-        else if ((strcmp(input.cmnd, "status") == 0) && (input.args[1] == NULL) && (input.iFile == NULL)) {
-            output_status(&status, exitStr, input.oFile);
-        }
-
-        // fork and exec time baby!
-        else {
-            spawnpid = -5;
-            childExitMethod = -5;
-            devNull = -5;
-            
-
-            spawnpid = fork();
-
-            if (spawnpid == -1) {
-                perror("smallsh: fork() failed, exiting\n");
+    // if user did not specify an output file and this command is to be run in the background
+    else if ((input.oFile == NULL) && (input.bg == 1)) {
+        // if file is not already open
+        if (devNull == -5) {
+            devNull = open("/dev/null", O_RDWR);
+            if (devNull < 0) {
+                perror("smallsh:\nerror with opening /dev/null\n"); fflush(stderr);
                 exit(1);
             }
-
-            // child
-            else if (spawnpid == 0) {
-                // printf("I AM THE CHILD\n"); fflush(stdout);
-                devNull = -5;
-
-                // i/o redirection here
-
-                // if user specified an input file
-                if (input.iFile != NULL) {
-                    sourceFD = open(input.iFile, O_RDONLY);
-                    if (sourceFD < 0) {
-                        perror("smallsh: error with opening input file"); fflush(stderr);
-                        // status = 1; // this would set the status of the child, not the parent
-                        exit(1);
-                    }
-                    result = dup2(sourceFD, 0);
-                    if (result == -1) {
-                        perror("error with source dup2()\n"); fflush(stderr);
-                    }
-                }
-
-                // if user did not specify an input file and this command is to be run in the background
-                else if ((input.iFile == NULL) && (input.bg == 1)) {
-                    devNull = open("/dev/null", O_RDWR);
-                    if (devNull < 0) {
-                        perror("smallsh: error with opening /dev/null\n"); fflush(stderr);
-                        // status = 1; // this would set the status of the child, not the parent
-                        exit(1);
-                    }
-                    result = dup2(devNull, 0);
-                    if (result == -1) {
-                        perror("smallsh: error with /dev/null dup2()\n"); fflush(stderr);
-                        // status = 1; // this would set the status of the child, not the parent
-                        exit(1);
-                    }
-                }
-
-                // if user specified an output file
-                if (input.oFile != NULL) {
-                    targetFD = open(input.oFile, O_WRONLY | O_CREAT | O_TRUNC, 0760);
-                    if (targetFD < 0) {
-                        perror("smallsh: error with opening output file"); fflush(stderr);
-                        // status = 1; // this would set the status of the child, not the parent
-                        exit(1);
-                    }
-                    result = dup2(targetFD, 1);
-                    if (result == -1) {
-                        perror("smallsh: error with target dup2()\n"); fflush(stderr);
-                        // status = 1; // this would set the status of the child, not the parent
-                        exit(1);
-                    }
-                }
-
-                // if user did not specify an output file and this command is to be run in the background
-                else if ((input.oFile == NULL) && (input.bg == 1)) {
-                    // if file is not already open
-                    if (devNull == -5) {
-                        devNull = open("/dev/null", O_RDWR);
-                        if (devNull < 0) {
-                            perror("smallsh: error with opening /dev/null\n"); fflush(stderr);
-                            // status = 1; // this would set the status of the child, not the parent
-                            exit(1);
-                        }
-                        result = dup2(devNull, 1);
-                        if (result == -1) {
-                            perror("smallsh: error with /dev/null dup2()\n"); fflush(stderr);
-                            // status = 1; // this would set the status of the child, not the parent
-                            exit(1);
-                        }
-                    }
-
-                    // if file is already open
-                    else {
-                        result = dup2(devNull, 1);
-                        if (result == -1) {
-                            perror("smallsh: error with /dev/null dup2()\n"); fflush(stderr);
-                            // status = 1; // this would set the status of the child, not the parent
-                            exit(1);
-                        }
-                    }
-                }
-
-                // if child is to be run in the foreground, don't ignore SIGINT
-                if (input.bg == 0) {
-                    signal(SIGINT, SIG_DFL);
-                }
-
-                // all children must ignore SIGTSTP
-                signal(SIGTSTP, SIG_IGN);
-
-                // exec stuff
-                if (execvp(input.cmnd, input.args) < 0) {
-                    perror("smallsh: exec() failure"); fflush(stderr);
-                    exit(1);
-                }
-            }
-            // parent
-            else {
-                // foreground command
-                if (input.bg == 0) {
-                    waitpid(spawnpid, &childExitMethod, 0);
-                    if (WIFEXITED(childExitMethod)) {
-                        status = WEXITSTATUS(childExitMethod); // get the exit status (of the child?)
-                    }
-                    else {
-                        // process was terminated by a signal
-                        status = WTERMSIG(childExitMethod);
-                        printf("smallsh:\nChild process was killed by signal\n    PID: %d\n    Signal: %d\n", spawnpid, status);
-                    }
-                }
-
-                // background command
-                else {
-                    printf("Background process PID: %d\n", spawnpid); fflush(stdout);
-                    pidArr = add_pid(pidArr, &arrSize, spawnpid);
-                }
+            result = dup2(devNull, 1);
+            if (result == -1) {
+                perror("smallsh:\nerror with /dev/null dup2()\n"); fflush(stderr);
+                exit(1);
             }
         }
 
-
-
-        free(line);
-        line = NULL;
+        // if file is already open
+        else {
+            result = dup2(devNull, 1);
+            if (result == -1) {
+                perror("smallsh:\nerror with /dev/null dup2()\n"); fflush(stderr);
+                exit(1);
+            }
+        }
     }
-
-
-    return 0;
 }
