@@ -461,34 +461,41 @@ void kill_processes(pid_t* arr, int size) {
     }
 }
 
-void catchSIGTSTP1(int signo) {
-	char* message = "\nEntering foreground-only mode (& is now ignored)\n";
-    write(STDOUT_FILENO, message, 50);
-    fgOnlyMode = 1;
-    sigaction(SIGTSTP, &SIGTSTP_action2, &SIGTSTP_action1);
-}
+// void catchSIGTSTP1(int signo) {
+// 	char* message = "\nEntering foreground-only mode (& is now ignored)\n";
+//     write(STDOUT_FILENO, message, 50);
+//     fgOnlyMode = 1;
+//     sigaction(SIGTSTP, &SIGTSTP_action2, &SIGTSTP_action1);
+// }
 
-void catchSIGTSTP2(int signo) {
-    char* message = "\nExiting foreground-only mode\n";
-    write(STDOUT_FILENO, message, 30);
-    fgOnlyMode = 0;
-    sigaction(SIGTSTP, &SIGTSTP_action1, &SIGTSTP_action2);
+// void catchSIGTSTP2(int signo) {
+//     char* message = "\nExiting foreground-only mode\n";
+//     write(STDOUT_FILENO, message, 30);
+//     fgOnlyMode = 0;
+//     sigaction(SIGTSTP, &SIGTSTP_action1, &SIGTSTP_action2);
+// }
+
+void SIGTSTP_handler(int signum) {
+    char* message = NULL;
+    if (fgOnlyMode) {
+        message = "\nExiting foreground-only mode\n: ";
+        write(STDOUT_FILENO, message, 32);
+        fgOnlyMode = 0;
+    }
+    else {
+        message = "\nEntering foreground-only mode (& is now ignored)\n: ";
+        write(STDOUT_FILENO, message, 52);
+        fgOnlyMode = 1;
+    }
 }
 
 int main() {
     struct sigaction SIGTSTP_action0 = {0};
 
-    // signal stuff
-    SIGTSTP_action1.sa_handler = catchSIGTSTP1;
-	sigfillset(&SIGTSTP_action1.sa_mask);
-	SIGTSTP_action1.sa_flags = 0;
-    sigaction(SIGTSTP, &SIGTSTP_action1, NULL);
+    // catch SIGTSTP (ctrl-Z)
+    signal(SIGTSTP, SIGTSTP_handler);
 
-    SIGTSTP_action2.sa_handler = catchSIGTSTP2;
-	sigfillset(&SIGTSTP_action2.sa_mask);
-	SIGTSTP_action2.sa_flags = 0;
-
-    // ignore SIGINT
+    // ignore SIGINT (ctrl-C)
     signal(SIGINT, SIG_IGN);
 
 
@@ -668,18 +675,7 @@ int main() {
                 }
 
                 // all children must ignore SIGTSTP
-                signal(SIGTSTP, SIG_IGN); // why does this not work??
-
-                
-
-                // SIGTSTP_action0.sa_handler = SIG_IGN;
-                // sigfillset(&SIGTSTP_action0.sa_mask);
-                // SIGTSTP_action0.sa_flags = 0;
-
-                // if (fgOnlyMode)
-                //     sigaction(SIGTSTP, &SIGTSTP_action0, &SIGTSTP_action2);
-                // else
-                //     sigaction(SIGTSTP, &SIGTSTP_action0, &SIGTSTP_action1);
+                signal(SIGTSTP, SIG_IGN);
 
                 // exec stuff
                 if (execvp(input.cmnd, input.args) < 0) {
